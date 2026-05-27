@@ -1,59 +1,72 @@
 """
-Yamper configuration.
+Yamper configuration module.
 
-All hardware pins, addresses, and settings live here so you only
-need to change one file if your wiring is different.
+Provides centralized configuration for hardware pins, I2C addresses,
+audio settings, and OpenAI model parameters. Also sets up the default
+logging configuration for the application.
 """
 
+import logging
 import os
 from pathlib import Path
+from typing import Final
 from dotenv import load_dotenv
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(__name__)
 
 # Load .env from the software/ directory (one level up from mimo/)
 _env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(_env_path)
+if _env_path.exists():
+    load_dotenv(_env_path)
+    logger.debug("Loaded environment variables from %s", _env_path)
+else:
+    logger.warning("No .env file found at %s. API keys may be missing.", _env_path)
 
-# ── OpenAI ──────────────────────────────────────────────────────
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-WHISPER_MODEL = "whisper-1"
-CHAT_MODEL = "gpt-4o-mini"
-TTS_MODEL = "tts-1"
-TTS_VOICE = "nova"
+# ── OpenAI Configuration ──────────────────────────────────────────────
+OPENAI_API_KEY: Final[str] = os.getenv("OPENAI_API_KEY", "")
+WHISPER_MODEL: Final[str] = "whisper-1"
+CHAT_MODEL: Final[str] = "gpt-4o-mini"
+TTS_MODEL: Final[str] = "tts-1"
+TTS_VOICE: Final[str] = "nova"
 
-SYSTEM_PROMPT = (
+SYSTEM_PROMPT: Final[str] = (
     "You are Yamper, a tiny friendly robot. "
     "Keep answers short — one or two sentences is best. "
     "Be cheerful and helpful."
 )
 
-# Maximum conversation history (user + assistant messages kept in memory)
-MAX_HISTORY = 10
+MAX_HISTORY: Final[int] = 10
 
-# ── GPIO pins ───────────────────────────────────────────────────
-BUTTON_PIN = 17       # physical pin 11 — momentary switch to GND
-BUTTON_LED_PIN = 27   # physical pin 13 — LED ring in button
+# ── GPIO Configuration ────────────────────────────────────────────────
+BUTTON_PIN: Final[int] = 17       # Physical pin 11 — momentary switch to GND
+BUTTON_LED_PIN: Final[int] = 27   # Physical pin 13 — LED ring in button
 
-# ── I2C OLED displays ──────────────────────────────────────────
-OLED_WIDTH = 128
-OLED_HEIGHT = 64
-OLED_LEFT_ADDR = 0x3C    # left eye
-OLED_RIGHT_ADDR = 0x3D   # right eye (change to 0x3C if both are same)
-I2C_PORT = 1             # default on Pi Zero 2 W
+# ── I2C OLED Configuration ────────────────────────────────────────────
+OLED_WIDTH: Final[int] = 128
+OLED_HEIGHT: Final[int] = 64
+OLED_LEFT_ADDR: Final[int] = 0x3C
+OLED_RIGHT_ADDR: Final[int] = 0x3D
+I2C_PORT: Final[int] = 1
 
-# ── Audio ───────────────────────────────────────────────────────
-MIC_SAMPLE_RATE = 16000       # 16 kHz mono — what Whisper expects
-MIC_CHANNELS = 1
-MIC_DTYPE = "int16"
+# ── Audio Configuration ───────────────────────────────────────────────
+MIC_SAMPLE_RATE: Final[int] = 16000
+MIC_CHANNELS: Final[int] = 1
+MIC_DTYPE: Final[str] = "int16"
 
-TTS_SAMPLE_RATE = 24000       # OpenAI TTS output sample rate
-SPEAKER_CHANNELS = 1
+TTS_SAMPLE_RATE: Final[int] = 24000
+SPEAKER_CHANNELS: Final[int] = 1
 
-# Recording limits
-MAX_RECORD_SECONDS = 15       # hard cap even if button held
-SILENCE_THRESHOLD = 400       # amplitude below this = silence
-SILENCE_DURATION = 1.5        # seconds of silence before auto-stop
+MAX_RECORD_SECONDS: Final[int] = 15
+SILENCE_THRESHOLD: Final[int] = 400
+SILENCE_DURATION: Final[float] = 1.5
 
-# ── WiFi ────────────────────────────────────────────────────────
-WIFI_CHECK_HOST = "8.8.8.8"
-WIFI_CHECK_TIMEOUT = 3        # seconds
-WIFI_RETRY_INTERVAL = 10      # seconds between retries
+# ── Network Configuration ─────────────────────────────────────────────
+WIFI_CHECK_HOST: Final[str] = "8.8.8.8"
+WIFI_CHECK_TIMEOUT: Final[int] = 3
+WIFI_RETRY_INTERVAL: Final[int] = 10

@@ -1,16 +1,18 @@
 """
-Yamper button handler.
+Yamper button handler module.
 
-Reads the 16mm momentary push button via RPi.GPIO.
-The button connects between BUTTON_PIN and GND (internal pull-up used).
-An optional LED ring is driven from BUTTON_LED_PIN.
+Manages GPIO interactions for the primary push-to-talk momentary switch
+and its integrated LED indicator. Utilizes RPi.GPIO edge detection for
+efficient state monitoring.
 """
 
-import time
+import logging
+from typing import Any, Optional
 
 from . import config
 
-# Try to import RPi.GPIO — falls back to a stub on non-Pi machines.
+logger = logging.getLogger(__name__)
+
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
@@ -19,7 +21,7 @@ except (ImportError, RuntimeError):
 
 
 class _GPIOStub:
-    """Minimal stub so code can be tested on a laptop."""
+    """Minimal hardware stub to facilitate local testing and development."""
     BCM = "BCM"
     IN = "IN"
     OUT = "OUT"
@@ -29,69 +31,97 @@ class _GPIOStub:
     LOW = 0
 
     @staticmethod
-    def setmode(mode): pass
+    def setmode(mode: str) -> None:
+        pass
+
     @staticmethod
-    def setup(pin, direction, pull_up_down=None): pass
+    def setup(pin: int, direction: str, pull_up_down: Optional[str] = None) -> None:
+        pass
+
     @staticmethod
-    def input(pin): return 1  # not pressed (pull-up)
+    def input(pin: int) -> int:
+        return 1  # Simulates pull-up resistor state (not pressed)
+
     @staticmethod
-    def output(pin, value): pass
+    def output(pin: int, value: int) -> None:
+        pass
+
     @staticmethod
-    def wait_for_edge(pin, edge, bouncetime=200, timeout=None): return pin
+    def wait_for_edge(pin: int, edge: str, bouncetime: int = 200, timeout: Optional[int] = None) -> Optional[int]:
+        return pin
+
     @staticmethod
-    def cleanup(): pass
+    def cleanup() -> None:
+        pass
+
     @staticmethod
-    def setwarnings(flag): pass
+    def setwarnings(flag: bool) -> None:
+        pass
 
 
 if not GPIO_AVAILABLE:
-    print("[button] RPi.GPIO not available — using stub")
-    GPIO = _GPIOStub()
+    logger.debug("RPi.GPIO not found in environment. Initializing hardware stub.")
+    GPIO = _GPIOStub()  # type: ignore
 
 
 class ButtonHandler:
     """
-    Push-to-talk button controller.
-
-    Usage:
-        btn = ButtonHandler()
-        btn.wait_for_press()    # blocks until pressed
-        while btn.is_pressed():
-            ...                 # record while held
-        btn.cleanup()
+    Controller for the push-to-talk button and LED.
+    
+    Abstracts raw GPIO operations into state querying and edge waiting methods.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize GPIO pins based on configuration."""
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
+        
         GPIO.setup(config.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(config.BUTTON_LED_PIN, GPIO.OUT)
+        
         self.set_led(False)
-        print(f"[button] ready on GPIO {config.BUTTON_PIN}")
+        logger.info("Button handler initialized on GPIO %d.", config.BUTTON_PIN)
 
-    def wait_for_press(self, timeout=None):
+    def wait_for_press(self, timeout: Optional[float] = None) -> bool:
         """
-        Block until the button is pressed (falling edge).
-        Returns True if pressed, False if timed out.
-        timeout is in seconds (None = wait forever).
+        Block execution until a button press (falling edge) is detected.
+
+        Args:
+            timeout: Optional wait duration in seconds. If None, blocks indefinitely.
+
+        Returns:
+            True if the button was pressed, False if the wait timed out.
         """
         timeout_ms = int(timeout * 1000) if timeout else None
         result = GPIO.wait_for_edge(
-            config.BUTTON_PIN, GPIO.FALLING,
-            bouncetime=200, timeout=timeout_ms
+            config.BUTTON_PIN, 
+            GPIO.FALLING,
+            bouncetime=200, 
+            timeout=timeout_ms
         )
         return result is not None
 
-    def is_pressed(self):
-        """Return True if the button is currently held down."""
+    def is_pressed(self) -> bool:
+        """
+        Check the instantaneous state of the button.
+
+        Returns:
+            True if the button is currently held down, False otherwise.
+        """
         return GPIO.input(config.BUTTON_PIN) == GPIO.LOW
 
-    def set_led(self, on):
-        """Turn the button LED ring on or off."""
-        GPIO.output(config.BUTTON_LED_PIN, GPIO.HIGH if on else GPIO.LOW)
+    def set_led(self, on: bool) -> None:
+        """
+        Activate or deactivate the button's internal LED.
 
-    def cleanup(self):
-        """Release GPIO resources."""
+        Args:
+            on: True to turn the LED on, False to turn it off.
+        """
+        state = GPIO.HIGH if on else GPIO.LOW
+        GPIO.output(config.BUTTON_LED_PIN, state)
+
+    def cleanup(self) -> None:
+        """Release allocated GPIO resources."""
         self.set_led(False)
         GPIO.cleanup()
-        print("[button] GPIO cleaned up")
+        logger.info("Button GPIO resources released.")

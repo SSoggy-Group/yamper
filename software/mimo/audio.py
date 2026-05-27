@@ -1,68 +1,72 @@
 """
-Yamper audio module.
+Yamper audio handling module.
 
-Handles three things:
-  1. Recording from the INMP441 I2S microphone
-  2. Playing audio through the MAX98357A amplifier
-  3. Talking to the OpenAI API (Whisper, Chat, TTS)
+Manages I2S hardware interaction for microphone capture and speaker playback,
+and orchestrates communication with the OpenAI API for speech-to-text, 
+language modeling, and text-to-speech.
 """
 
 import io
-import struct
-import time
+import logging
 import wave
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
 from . import config
 
-# sounddevice uses PortAudio which talks to ALSA on the Pi
+logger = logging.getLogger(__name__)
+
+# sounddevice interacts with ALSA for raw PCM streams
 try:
     import sounddevice as sd
     SD_AVAILABLE = True
-except (ImportError, OSError):
+except (ImportError, OSError) as exc:
     SD_AVAILABLE = False
-    print("[audio] sounddevice not available — audio disabled")
+    logger.warning("sounddevice module failed to initialize. Audio hardware is disabled: %s", exc)
 
-# OpenAI client
+# OpenAI Python Client
 try:
     from openai import OpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    print("[audio] openai package not available")
+    logger.error("openai package not found. AI features disabled.")
 
 
-# ── Recording ───────────────────────────────────────────────────
+# ── Recording Subsystem ───────────────────────────────────────────────────────
 
-def record_while_pressed(is_pressed_fn, max_seconds=None):
+def record_while_pressed(
+    is_pressed_fn: Callable[[], bool], 
+    max_seconds: Optional[float] = None
+) -> Optional[bytes]:
     """
-    Record audio while is_pressed_fn() returns True.
+    Capture audio stream via ALSA as long as the provided condition function evaluates to True.
 
     Args:
-        is_pressed_fn: callable that returns True while button held
-        max_seconds:   hard limit (defaults to config.MAX_RECORD_SECONDS)
+        is_pressed_fn: A callable returning True while recording should continue.
+        max_seconds: The absolute maximum recording duration before forced termination.
 
     Returns:
-        WAV file bytes ready to send to Whisper, or None on failure.
+        A WAV formatted byte array containing the recorded audio, or None if hardware failed.
     """
     if max_seconds is None:
-        max_seconds = config.MAX_RECORD_SECONDS
+        max_seconds = float(config.MAX_RECORD_SECONDS)
 
     if not SD_AVAILABLE:
-        print("[audio] cannot record — sounddevice not available")
+        logger.error("Recording aborted: sounddevice is not available.")
         return None
 
     rate = config.MIC_SAMPLE_RATE
     channels = config.MIC_CHANNELS
-    chunk_duration = 0.1  # 100 ms chunks
+    chunk_duration = 0.1
     chunk_frames = int(rate * chunk_duration)
 
-    frames = []
+    frames: List[np.ndarray] = []
     total_frames = 0
     max_frames = int(rate * max_seconds)
 
-    print("[audio] recording started")
+    logger.info("Audio recording initiated.")
     try:
         stream = sd.InputStream(
             samplerate=rate,
@@ -77,39 +81,42 @@ def record_while_pressed(is_pressed_fn, max_seconds=None):
             frames.append(data.copy())
             total_frames += len(data)
 
-            # Stop when button released
             if not is_pressed_fn():
                 break
 
         stream.stop()
         stream.close()
-    except Exception as e:
-        print(f"[audio] recording error: {e}")
+    except Exception as exc:
+        logger.error("Audio recording stream failed: %s", exc, exc_info=True)
         return None
 
     if not frames:
-        print("[audio] no audio captured")
+        logger.warning("Recording finished but no audio frames were captured.")
         return None
 
     audio_data = np.concatenate(frames)
     duration = len(audio_data) / rate
-    print(f"[audio] recorded {duration:.1f}s ({len(audio_data)} samples)")
+    logger.info("Recording complete: %.1f seconds captured.", duration)
 
-    # Convert to WAV bytes
     return _to_wav_bytes(audio_data, rate)
 
 
-def record_seconds(duration=3):
+def record_seconds(duration: float = 3.0) -> Optional[bytes]:
     """
-    Record a fixed number of seconds. Useful for testing.
-    Returns WAV file bytes or None.
+    Record audio for a fixed duration. Primarily intended for diagnostic testing.
+
+    Args:
+        duration: The length of the recording in seconds.
+
+    Returns:
+        A WAV formatted byte array, or None if hardware failed.
     """
     if not SD_AVAILABLE:
-        print("[audio] cannot record — sounddevice not available")
+        logger.error("Recording aborted: sounddevice is not available.")
         return None
 
     rate = config.MIC_SAMPLE_RATE
-    print(f"[audio] recording {duration}s ...")
+    logger.info("Recording fixed duration: %.1f seconds...", duration)
     try:
         data = sd.rec(
             int(rate * duration),
@@ -118,39 +125,47 @@ def record_seconds(duration=3):
             dtype=config.MIC_DTYPE,
         )
         sd.wait()
-    except Exception as e:
-        print(f"[audio] recording error: {e}")
+    except Exception as exc:
+        logger.error("Fixed duration recording failed: %s", exc, exc_info=True)
         return None
 
-    print(f"[audio] recorded {duration}s")
+    logger.info("Fixed duration recording complete.")
     return _to_wav_bytes(data, rate)
 
 
-def _to_wav_bytes(audio_np, sample_rate):
-    """Convert a numpy int16 array to in-memory WAV file bytes."""
+def _to_wav_bytes(audio_np: np.ndarray, sample_rate: int) -> bytes:
+    """Encode a raw PCM numpy array into a WAV byte stream."""
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(config.MIC_CHANNELS)
-        wf.setsampwidth(2)  # 16-bit = 2 bytes
+        wf.setsampwidth(2)  # 16-bit PCM requires 2 bytes
         wf.setframerate(sample_rate)
         wf.writeframes(audio_np.tobytes())
     buf.seek(0)
     return buf.read()
 
 
-def save_wav(wav_bytes, path):
-    """Save WAV bytes to a file (for testing)."""
-    with open(path, "wb") as f:
-        f.write(wav_bytes)
-    print(f"[audio] saved to {path}")
+def save_wav(wav_bytes: bytes, path: str) -> None:
+    """Persist WAV bytes to the local filesystem for analysis."""
+    try:
+        with open(path, "wb") as f:
+            f.write(wav_bytes)
+        logger.debug("WAV data successfully written to %s.", path)
+    except IOError as exc:
+        logger.error("Failed to save WAV to %s: %s", path, exc)
 
 
-# ── Playback ────────────────────────────────────────────────────
+# ── Playback Subsystem ────────────────────────────────────────────────────────
 
-def play_wav_bytes(wav_bytes):
-    """Play WAV data through the speaker. Blocks until done."""
+def play_wav_bytes(wav_bytes: bytes) -> None:
+    """
+    Play a WAV byte stream through the ALSA sink. Blocks execution until complete.
+
+    Args:
+        wav_bytes: The WAV formatted audio data to play.
+    """
     if not SD_AVAILABLE:
-        print("[audio] cannot play — sounddevice not available")
+        logger.error("Playback aborted: sounddevice is not available.")
         return
 
     try:
@@ -165,96 +180,122 @@ def play_wav_bytes(wav_bytes):
         if channels > 1:
             data = data.reshape(-1, channels)
 
-        print(f"[audio] playing {len(data)/rate:.1f}s audio")
+        logger.info("Initiating playback (%.1fs duration at %d Hz).", len(data) / rate, rate)
         sd.play(data, samplerate=rate)
         sd.wait()
-        print("[audio] playback done")
-    except Exception as e:
-        print(f"[audio] playback error: {e}")
+        logger.debug("Playback complete.")
+    except Exception as exc:
+        logger.error("Hardware playback error: %s", exc, exc_info=True)
 
 
-def play_mp3_bytes(mp3_bytes):
+def play_mp3_bytes(mp3_bytes: bytes) -> None:
     """
-    Play MP3 data from OpenAI TTS.
-    Converts MP3 to WAV using a simple approach — if pydub is available
-    we use it, otherwise we write to a temp file and use ffmpeg.
+    Play an MP3 byte stream (typically sourced from OpenAI TTS).
+    
+    Attempts to use pydub for in-memory decoding. If pydub is missing, 
+    falls back to a subprocess call utilizing ffmpeg.
+    
+    Args:
+        mp3_bytes: The raw MP3 encoded byte array.
     """
     if not SD_AVAILABLE:
-        print("[audio] cannot play — sounddevice not available")
+        logger.error("MP3 playback aborted: sounddevice is not available.")
         return
 
     try:
-        # Try pydub first (optional dependency)
         from pydub import AudioSegment
         seg = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
         seg = seg.set_channels(1).set_frame_rate(config.TTS_SAMPLE_RATE)
         raw = np.array(seg.get_array_of_samples(), dtype=np.int16)
-        print(f"[audio] playing TTS ({len(raw)/config.TTS_SAMPLE_RATE:.1f}s)")
+        
+        logger.info("Playing TTS response via pydub decoding.")
         sd.play(raw, samplerate=config.TTS_SAMPLE_RATE)
         sd.wait()
-        print("[audio] TTS playback done")
         return
     except ImportError:
-        pass
+        logger.debug("pydub not installed. Falling back to ffmpeg subprocessing for MP3 decode.")
 
-    # Fallback: use subprocess + ffmpeg to decode MP3
+    import os
     import subprocess
     import tempfile
-    import os
-    try:
-        tmp_mp3 = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-        tmp_mp3.write(mp3_bytes)
-        tmp_mp3.close()
 
-        tmp_wav = tmp_mp3.name.replace(".mp3", ".wav")
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
+            tmp_mp3.write(mp3_bytes)
+            tmp_mp3_name = tmp_mp3.name
+
+        tmp_wav_name = tmp_mp3_name.replace(".mp3", ".wav")
+        
         subprocess.run(
-            ["ffmpeg", "-y", "-i", tmp_mp3.name,
-             "-ar", str(config.TTS_SAMPLE_RATE),
-             "-ac", "1", "-f", "wav", tmp_wav],
-            capture_output=True, check=True,
+            [
+                "ffmpeg", "-y", "-i", tmp_mp3_name,
+                "-ar", str(config.TTS_SAMPLE_RATE),
+                "-ac", "1", "-f", "wav", tmp_wav_name
+            ],
+            capture_output=True, 
+            check=True,
         )
 
-        with open(tmp_wav, "rb") as f:
-            play_wav_bytes(f.read())
+        with open(tmp_wav_name, "rb") as f:
+            wav_data = f.read()
+            
+        play_wav_bytes(wav_data)
+        
+    except subprocess.CalledProcessError as exc:
+        logger.error("FFmpeg fallback decoding failed: %s", exc.stderr.decode())
+    except Exception as exc:
+        logger.error("Unexpected error during MP3 playback: %s", exc, exc_info=True)
+    finally:
+        if 'tmp_mp3_name' in locals() and os.path.exists(tmp_mp3_name):
+            os.unlink(tmp_mp3_name)
+        if 'tmp_wav_name' in locals() and os.path.exists(tmp_wav_name):
+            os.unlink(tmp_wav_name)
 
-        os.unlink(tmp_mp3.name)
-        os.unlink(tmp_wav)
-    except Exception as e:
-        print(f"[audio] MP3 decode/playback error: {e}")
 
+def play_tone(frequency: float = 440.0, duration: float = 2.0, volume: float = 0.5) -> None:
+    """
+    Synthesize and play a sine wave tone for hardware validation.
 
-def play_tone(frequency=440, duration=2.0, volume=0.5):
-    """Play a sine wave tone. Useful for testing the speaker."""
+    Args:
+        frequency: Frequency of the sine wave in Hz.
+        duration: Playback length in seconds.
+        volume: Amplitude scale factor (0.0 to 1.0).
+    """
     if not SD_AVAILABLE:
-        print("[audio] cannot play — sounddevice not available")
+        logger.error("Tone playback aborted: sounddevice is not available.")
         return
 
     rate = config.TTS_SAMPLE_RATE
     t = np.linspace(0, duration, int(rate * duration), endpoint=False)
     tone = (volume * 32767 * np.sin(2 * np.pi * frequency * t)).astype(np.int16)
-    print(f"[audio] playing {frequency}Hz tone for {duration}s")
+    
+    logger.info("Playing test tone: %d Hz for %.1fs.", int(frequency), duration)
     sd.play(tone, samplerate=rate)
     sd.wait()
-    print("[audio] tone done")
 
 
-# ── OpenAI API ──────────────────────────────────────────────────
+# ── OpenAI Integration ────────────────────────────────────────────────────────
 
-def _get_client():
-    """Create an OpenAI client. Returns None if not configured."""
+def _get_client() -> Optional[OpenAI]:
+    """Retrieve an authenticated OpenAI client instance if properly configured."""
     if not OPENAI_AVAILABLE:
-        print("[audio] openai package not installed")
+        logger.error("Cannot construct OpenAI client: openai module missing.")
         return None
     if not config.OPENAI_API_KEY:
-        print("[audio] OPENAI_API_KEY not set — check your .env file")
+        logger.error("OpenAI API key is missing. Ensure .env is loaded correctly.")
         return None
     return OpenAI(api_key=config.OPENAI_API_KEY)
 
 
-def transcribe(wav_bytes):
+def transcribe(wav_bytes: bytes) -> Optional[str]:
     """
-    Send WAV audio to OpenAI Whisper for speech-to-text.
-    Returns the transcribed text, or None on failure.
+    Execute speech-to-text inference against the OpenAI Whisper API.
+
+    Args:
+        wav_bytes: The WAV formatted audio input.
+
+    Returns:
+        The transcribed text string, or None if the API request failed.
     """
     client = _get_client()
     if not client:
@@ -262,29 +303,34 @@ def transcribe(wav_bytes):
 
     try:
         buf = io.BytesIO(wav_bytes)
-        buf.name = "audio.wav"  # OpenAI needs a filename
+        buf.name = "audio.wav"
+        
+        logger.debug("Transmitting audio payload to Whisper API.")
         result = client.audio.transcriptions.create(
             model=config.WHISPER_MODEL,
             file=buf,
         )
         text = result.text.strip()
-        print(f"[audio] transcribed: {text}")
+        logger.info("Transcription successful.")
         return text
-    except Exception as e:
-        print(f"[audio] Whisper error: {e}")
+    except Exception as exc:
+        logger.error("Whisper API transcription failed: %s", exc)
         return None
 
 
-def chat(user_text, history=None):
+def chat(user_text: str, history: Optional[List[Dict[str, str]]] = None) -> Tuple[Optional[str], List[Dict[str, str]]]:
     """
-    Send text to GPT and get a response.
+    Submit user input to the OpenAI Chat Completions API.
+
+    Maintains contextual awareness by appending system prompts and truncated historical messages.
 
     Args:
-        user_text: what the user said
-        history:   list of {"role": ..., "content": ...} dicts
+        user_text: The user's transcribed prompt.
+        history: Previous conversational messages conforming to the Chat API schema.
 
     Returns:
-        (response_text, updated_history) or (None, history) on failure
+        A tuple containing the API's text response and the updated conversation history buffer.
+        If the API call fails, returns (None, original_history).
     """
     client = _get_client()
     if not client:
@@ -298,46 +344,51 @@ def chat(user_text, history=None):
     messages.append({"role": "user", "content": user_text})
 
     try:
+        logger.debug("Requesting chat completion from model: %s", config.CHAT_MODEL)
         response = client.chat.completions.create(
             model=config.CHAT_MODEL,
             messages=messages,
             max_tokens=200,
         )
-        reply = response.choices[0].message.content.strip()
-        print(f"[audio] GPT reply: {reply}")
+        reply = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
+        logger.info("Chat completion received.")
 
-        # Update history
         history.append({"role": "user", "content": user_text})
         history.append({"role": "assistant", "content": reply})
 
-        # Trim history to keep memory usage low
         if len(history) > config.MAX_HISTORY * 2:
             history = history[-(config.MAX_HISTORY * 2):]
 
         return reply, history
-    except Exception as e:
-        print(f"[audio] GPT error: {e}")
+    except Exception as exc:
+        logger.error("Chat Completion API failed: %s", exc)
         return None, history
 
 
-def text_to_speech(text):
+def text_to_speech(text: str) -> Optional[bytes]:
     """
-    Convert text to speech using OpenAI TTS.
-    Returns MP3 bytes, or None on failure.
+    Convert text into synthesized speech using the OpenAI TTS API.
+
+    Args:
+        text: The string to be synthesized.
+
+    Returns:
+        The raw MP3 encoded byte stream from the API, or None on failure.
     """
     client = _get_client()
     if not client:
         return None
 
     try:
+        logger.debug("Requesting TTS synthesis from model: %s", config.TTS_MODEL)
         response = client.audio.speech.create(
             model=config.TTS_MODEL,
-            voice=config.TTS_VOICE,
+            voice=config.TTS_VOICE,  # type: ignore
             input=text,
         )
         mp3_bytes = response.content
-        print(f"[audio] TTS: got {len(mp3_bytes)} bytes of audio")
+        logger.info("TTS synthesis successful: %d bytes generated.", len(mp3_bytes))
         return mp3_bytes
-    except Exception as e:
-        print(f"[audio] TTS error: {e}")
+    except Exception as exc:
+        logger.error("TTS API synthesis failed: %s", exc)
         return None
