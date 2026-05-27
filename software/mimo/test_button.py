@@ -1,46 +1,24 @@
-"""
-Test: push button and LED.
-
-Press and release the button a few times. The LED will light up while held.
-Press Ctrl+C to exit.
-Run: python3 -m mimo.test_button
-"""
-
 import time
-from .button import ButtonHandler
-
+from .button import Button
 
 def main():
-    print("=== Button test ===")
-    print("  press the button (Ctrl+C to quit)\n")
-
-    btn = ButtonHandler()
+    print("testing button... press ctrl+c to quit")
+    btn = Button()
     count = 0
-
     try:
         while True:
             btn.set_led(False)
-            pressed = btn.wait_for_press(timeout=1)
-            if not pressed:
-                continue
-
-            count += 1
-            print(f"  press #{count} detected!")
-            btn.set_led(True)
-
-            # Wait for release
-            while btn.is_pressed():
-                time.sleep(0.05)
-            print(f"  released")
-            btn.set_led(False)
-
+            if btn.wait_for_press(1):
+                count += 1
+                print(f"pressed {count} times!")
+                btn.set_led(True)
+                while btn.is_pressed():
+                    time.sleep(0.05)
+                print("released")
     except KeyboardInterrupt:
-        print("\n\n  stopped by user")
+        print("done")
     finally:
         btn.cleanup()
-
-    print("=== Test complete ===")
-
 
 if __name__ == "__main__":
     main()

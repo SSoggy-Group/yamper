@@ -1,7 +1,7 @@
 openai>=1.0.0
 Pillow
 luma.oled
-RPi.GPIO
+RPi.GPIO; sys_platform == 'linux'
 sounddevice
 numpy
 python-dotenv

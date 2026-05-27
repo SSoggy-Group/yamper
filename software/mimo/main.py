@@ -1,168 +1,128 @@
-"""
-Yamper Application Main Module.
-
-Implements the primary operational state machine for the Yamper hardware,
-managing transitions between initialization, idle, listening, processing,
-and speaking states, while handling environmental factors like network loss.
-"""
-
-import logging
 import signal
 import subprocess
 import sys
 import time
-from typing import Any, List, Dict
 
 from . import audio
 from . import config
-from .button import ButtonHandler
-from .eyes import EyeDisplay, EyeState
+from .button import Button
+from .eyes import Eyes
 
-logger = logging.getLogger(__name__)
-
-
-def check_wifi() -> bool:
-    """
-    Verify network connectivity by executing a system ping against a known host.
-
-    Returns:
-        True if the host is reachable, False otherwise.
-    """
+def check_wifi():
     try:
         subprocess.run(
-            [
-                "ping", "-c", "1", "-W", str(config.WIFI_CHECK_TIMEOUT),
-                config.WIFI_CHECK_HOST
-            ],
-            capture_output=True, 
-            check=True,
+            ["ping", "-c", "1", "-W", str(config.WIFI_CHECK_TIMEOUT), config.WIFI_CHECK_HOST],
+            capture_output=True, check=True
         )
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except:
         return False
 
-
-def _cleanup(eyes: EyeDisplay, button: ButtonHandler) -> None:
-    """
-    Safely transition hardware into a dormant state before process exit.
-
-    Args:
-        eyes: The initialized EyeDisplay component.
-        button: The initialized ButtonHandler component.
-    """
-    logger.info("Executing hardware cleanup sequence.")
-    eyes.set_state(EyeState.SLEEP)
+def cleanup(eyes, button):
+    print("cleaning up hardware...")
+    eyes.set_state("sleep")
     time.sleep(0.5)
     eyes.stop()
     button.cleanup()
-    logger.info("Application shutdown complete.")
+    print("bye!")
 
+def main():
+    print("starting yamper...")
 
-def main() -> None:
-    """Primary application entry point and event loop."""
-    logger.info("Initializing Yamper Voice Assistant Core.")
-
-    # ── Initialize Hardware ───────────────────────────────────────────────────
-    eyes = EyeDisplay()
+    eyes = Eyes()
     eyes.start()
-    eyes.set_state(EyeState.BOOT)
+    eyes.set_state("boot")
     time.sleep(1.5)
 
-    button = ButtonHandler()
-    conversation_history: List[Dict[str, str]] = []
+    button = Button()
+    history = []
     
-    # ── Signal Handling ───────────────────────────────────────────────────────
     running = True
 
-    def shutdown_handler(signum: int, frame: Any) -> None:
+    def on_exit(signum, frame):
         nonlocal running
-        logger.info("Received termination signal (%d). Initiating shutdown.", signum)
+        print(f"\ngot signal {signum}, stopping...")
         running = False
 
-    signal.signal(signal.SIGTERM, shutdown_handler)
-    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, on_exit)
+    signal.signal(signal.SIGINT, on_exit)
 
-    # ── Network Verification ──────────────────────────────────────────────────
-    logger.info("Verifying network connectivity...")
+    print("checking wifi...")
     while running and not check_wifi():
-        logger.warning("Network unreachable. Retrying in %d seconds.", config.WIFI_RETRY_INTERVAL)
-        eyes.set_state(EyeState.WIFI_ERROR)
+        print(f"no wifi... trying again in {config.WIFI_RETRY_INTERVAL}s")
+        eyes.set_state("wifi_error")
         time.sleep(config.WIFI_RETRY_INTERVAL)
 
     if not running:
-        _cleanup(eyes, button)
+        cleanup(eyes, button)
         sys.exit(0)
 
-    logger.info("Network connectivity confirmed. System ready.")
-
-    # ── Main Event Loop ───────────────────────────────────────────────────────
-    eyes.set_state(EyeState.IDLE)
+    print("wifi ok! yamper is ready.")
+    eyes.set_state("idle")
     button.set_led(True)
 
     while running:
-        pressed = button.wait_for_press(timeout=1.0)
-        if not pressed:
+        if not button.wait_for_press(timeout=1.0):
             continue
 
-        # ── LISTENING STATE ───────────────────────────────────────────────────
-        logger.debug("Input trigger detected. Transitioning to LISTENING state.")
+        print("button pressed, listening...")
         button.set_led(False)
-        eyes.set_state(EyeState.LISTENING)
-
+        eyes.set_state("listening")
         time.sleep(0.15)
+        
         wav_bytes = audio.record_while_pressed(button.is_pressed)
 
-        if wav_bytes is None:
-            logger.error("Audio capture failed. Aborting interaction cycle.")
-            eyes.set_state(EyeState.ERROR)
+        if not wav_bytes:
+            print("audio capture failed :(")
+            eyes.set_state("error")
             time.sleep(2.0)
-            eyes.set_state(EyeState.IDLE)
+            eyes.set_state("idle")
             button.set_led(True)
             continue
 
-        # ── PROCESSING STATE ──────────────────────────────────────────────────
-        logger.debug("Audio captured. Transitioning to THINKING state.")
-        eyes.set_state(EyeState.THINKING)
+        print("thinking...")
+        eyes.set_state("thinking")
 
         text = audio.transcribe(wav_bytes)
         if not text:
-            logger.warning("Transcription yielded no actionable text.")
-            eyes.set_state(EyeState.ERROR)
+            print("couldn't understand that")
+            eyes.set_state("error")
             time.sleep(2.0)
-            eyes.set_state(EyeState.IDLE)
+            eyes.set_state("idle")
             button.set_led(True)
             continue
-
-        reply, conversation_history = audio.chat(text, conversation_history)
-        if reply is None:
-            logger.error("Language Model inference failed.")
-            eyes.set_state(EyeState.ERROR)
+            
+        print("user said:", text)
+        reply, history = audio.chat(text, history)
+        
+        if not reply:
+            print("llm failed")
+            eyes.set_state("error")
             time.sleep(2.0)
-            eyes.set_state(EyeState.IDLE)
+            eyes.set_state("idle")
             button.set_led(True)
             continue
-
+            
+        print("yamper says:", reply)
         mp3_data = audio.text_to_speech(reply)
-        if mp3_data is None:
-            logger.error("Text-to-Speech synthesis failed.")
-            eyes.set_state(EyeState.ERROR)
+        
+        if not mp3_data:
+            print("tts failed")
+            eyes.set_state("error")
             time.sleep(2.0)
-            eyes.set_state(EyeState.IDLE)
+            eyes.set_state("idle")
             button.set_led(True)
             continue
 
-        # ── SPEAKING STATE ────────────────────────────────────────────────────
-        logger.debug("Transitioning to SPEAKING state.")
-        eyes.set_state(EyeState.SPEAKING)
+        print("speaking...")
+        eyes.set_state("speaking")
         audio.play_mp3_bytes(mp3_data)
 
-        # ── RETURN TO IDLE ────────────────────────────────────────────────────
-        eyes.set_state(EyeState.IDLE)
+        eyes.set_state("idle")
         button.set_led(True)
-        logger.debug("Interaction cycle complete. Awaiting input.")
+        print("done, back to idle")
 
-    _cleanup(eyes, button)
-
+    cleanup(eyes, button)
 
 if __name__ == "__main__":
     main()
