@@ -30,7 +30,7 @@ hardware/
     source/    dimensions, source notes and preview files
     renders/   concept render
 software/
-  mimo/        early Python app skeleton
+  yamper/        early Python app skeleton
   systemd/     service file for autostart
 docs/          wiring and build notes
 ```

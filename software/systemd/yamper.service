@@ -10,7 +10,7 @@ Group=pi
 WorkingDirectory=/home/pi/yamper/software
 EnvironmentFile=/home/pi/yamper/software/.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/pi/yamper/software/.venv/bin/python3 -m mimo.main
+ExecStart=/home/pi/yamper/software/.venv/bin/python3 -m yamper.main
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

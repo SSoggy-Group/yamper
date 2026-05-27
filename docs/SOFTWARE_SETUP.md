@@ -160,7 +160,7 @@ Run each test one at a time to verify your wiring:
 ### Test the OLED eyes
 
 ```bash
-python3 -m mimo.test_eyes
+python3 -m yamper.test_eyes
 ```
 
 You should see different eye animations cycle on the OLED screens.
@@ -168,7 +168,7 @@ You should see different eye animations cycle on the OLED screens.
 ### Test the button
 
 ```bash
-python3 -m mimo.test_button
+python3 -m yamper.test_button
 ```
 
 Press the button — you should see messages in the terminal. The LED should light up while the button is held. Press `Ctrl+C` to stop.
@@ -176,7 +176,7 @@ Press the button — you should see messages in the terminal. The LED should lig
 ### Test the microphone
 
 ```bash
-python3 -m mimo.test_mic
+python3 -m yamper.test_mic
 ```
 
 Speak during the 3-second recording. It will play back what it heard.
@@ -184,7 +184,7 @@ Speak during the 3-second recording. It will play back what it heard.
 ### Test the speaker
 
 ```bash
-python3 -m mimo.test_speaker
+python3 -m yamper.test_speaker
 ```
 
 You should hear a 440 Hz beep tone.
@@ -192,7 +192,7 @@ You should hear a 440 Hz beep tone.
 ### Test the OpenAI API
 
 ```bash
-python3 -m mimo.test_openai
+python3 -m yamper.test_openai
 ```
 
 You should hear the robot say a greeting.
@@ -202,7 +202,7 @@ You should hear the robot say a greeting.
 Once all tests pass:
 
 ```bash
-python3 -m mimo.main
+python3 -m yamper.main
 ```
 
 Press the button, speak, and Yamper will respond!
@@ -303,7 +303,7 @@ yamper/
 │   ├── requirements.txt        # Python dependencies
 │   ├── systemd/
 │   │   └── yamper.service      # autostart service
-│   └── mimo/
+│   └── yamper/
 │       ├── __init__.py
 │       ├── config.py           # all settings and pin numbers
 │       ├── main.py             # main app loop
