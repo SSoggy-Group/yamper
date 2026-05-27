@@ -1,10 +1,8 @@
-# Mimo
+# Yamper
 
 A tiny 3D-printed AI voice robot powered by a Raspberry Pi Zero 2 W, with OLED eyes, a speaker, microphone, button control, and a portable PiSugar battery.
 
 ## Current version
-
-`V6 Zero Fixed Beta`
 
 This version targets a Raspberry Pi Zero 2 WH with a PiSugar 3 1200mAh battery.
 
@@ -35,7 +33,7 @@ software/
 docs/          wiring and build notes
 ```
 
-## Print advice
+
 
 Start by printing only:
 
@@ -58,12 +56,11 @@ Recommended settings:
 - Layer height: 0.20 mm
 - Walls: 3 or 4
 - Infill: 15 to 25 percent
-- Supports: only if the slicer clearly needs them
+
 
 ## Status
 
-This is not final product-ready yet. It is a first serious fit-test version.
-
+This is not final product-ready yet.
 Known things to verify:
 
 - speaker thickness
