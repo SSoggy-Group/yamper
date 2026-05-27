@@ -1,4 +1,4 @@
-# Yamper — Software Setup Guide
+# Yamper Software Setup Guide
 
 Complete step-by-step instructions for setting up Yamper on a fresh Raspberry Pi Zero 2 WH.
 
