@@ -26,7 +26,21 @@ def process_audio_interaction(eyes, button, history):
     eyes.set_state("listening")
     time.sleep(0.15)
     
-    wav_bytes = audio.record_while_pressed(button.is_pressed)
+    press_start = time.time()
+    shutdown_requested = [False]
+
+    def check_button():
+        if not button.is_pressed():
+            return False
+        if time.time() - press_start >= config.SHUTDOWN_HOLD_SECONDS:
+            shutdown_requested[0] = True
+            return False
+        return True
+
+    wav_bytes = audio.record_while_pressed(check_button)
+    
+    if shutdown_requested[0]:
+        return "SHUTDOWN"
 
     if not wav_bytes:
         print("audio capture failed :(")
@@ -121,6 +135,24 @@ def run_robot():
     eyes.set_state("boot")
     time.sleep(1.5)
 
+    if not audio.has_sd and sys.platform != "darwin":
+        print("WARNING: sounddevice not found! Audio will not work.")
+
+    if config.USE_FREE_AI:
+        if not config.HACKCLUB_API_KEY or config.HACKCLUB_API_KEY == "sk-your-key-here":
+            print("ERROR: HACKCLUB_API_KEY is not set in config/environment.")
+            eyes.set_state("error")
+            time.sleep(5)
+            eyes.stop()
+            sys.exit(1)
+    else:
+        if not config.OPENAI_API_KEY or config.OPENAI_API_KEY == "sk-your-key-here":
+            print("ERROR: OPENAI_API_KEY is not set in config/environment.")
+            eyes.set_state("error")
+            time.sleep(5)
+            eyes.stop()
+            sys.exit(1)
+
     button = Button()
     history = []
     
@@ -151,7 +183,16 @@ def run_robot():
         if not button.wait_for_press(timeout=1.0):
             continue
 
-        history = process_audio_interaction(eyes, button, history)
+        res = process_audio_interaction(eyes, button, history)
+        if res == "SHUTDOWN":
+            print("long press detected! initiating shutdown...")
+            eyes.set_state("sleep")
+            time.sleep(1.0)
+            subprocess.run(["sudo", "shutdown", "-h", "now"])
+            running = False
+            break
+        else:
+            history = res
 
     cleanup(eyes, button)
 
