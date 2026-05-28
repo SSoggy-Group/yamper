@@ -118,6 +118,21 @@ def play_wav_bytes(wav_bytes):
 
 def play_mp3_bytes(mp3_bytes):
     if not has_sd: return
+    
+    import sys
+    if sys.platform == "darwin":
+        tmp_mp3_name = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
+                tmp_mp3.write(mp3_bytes)
+                tmp_mp3_name = tmp_mp3.name
+            subprocess.run(["afplay", tmp_mp3_name], check=True)
+            return
+        except Exception as e:
+            pass
+        finally:
+            if tmp_mp3_name and os.path.exists(tmp_mp3_name): os.unlink(tmp_mp3_name)
+
     try:
         from pydub import AudioSegment
         seg = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
@@ -131,7 +146,9 @@ def play_mp3_bytes(mp3_bytes):
     except Exception as e:
         print("pydub failed:", e)
         
-    print("falling back to ffmpeg for mp3")
+    print("falling back to OS player / ffmpeg for mp3")
+    tmp_mp3_name = None
+    tmp_wav_name = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
             tmp_mp3.write(mp3_bytes)
@@ -146,8 +163,8 @@ def play_mp3_bytes(mp3_bytes):
     except Exception as e:
         print("ffmpeg fallback failed:", e)
     finally:
-        if 'tmp_mp3_name' in locals() and os.path.exists(tmp_mp3_name): os.unlink(tmp_mp3_name)
-        if 'tmp_wav_name' in locals() and os.path.exists(tmp_wav_name): os.unlink(tmp_wav_name)
+        if tmp_mp3_name and os.path.exists(tmp_mp3_name): os.unlink(tmp_mp3_name)
+        if tmp_wav_name and os.path.exists(tmp_wav_name): os.unlink(tmp_wav_name)
 
 def play_tone(frequency=440.0, duration=2.0, volume=0.5):
     if not has_sd: return
@@ -158,10 +175,25 @@ def play_tone(frequency=440.0, duration=2.0, volume=0.5):
     sd.wait()
 
 def _get_client():
-    if not has_openai or not config.OPENAI_API_KEY: return None
-    return OpenAI(api_key=config.OPENAI_API_KEY)
+    if config.USE_FREE_AI:
+        if not has_openai or not config.HACKCLUB_API_KEY: return None
+        return OpenAI(api_key=config.HACKCLUB_API_KEY, base_url="https://ai.hackclub.com/proxy/v1")
+    else:
+        if not has_openai or not config.OPENAI_API_KEY: return None
+        return OpenAI(api_key=config.OPENAI_API_KEY)
 
 def transcribe(wav_bytes):
+    if config.USE_FREE_AI:
+        try:
+            import speech_recognition as sr
+            r = sr.Recognizer()
+            with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
+                audio = r.record(source)
+            return r.recognize_google(audio)  # type: ignore
+        except Exception as e:
+            print("free transcribe failed:", e)
+            return None
+
     client = _get_client()
     if not client: return None
     try:
@@ -180,7 +212,7 @@ def chat(user_text, history=None):
 
     msgs = [{"role": "system", "content": config.SYSTEM_PROMPT}] + history + [{"role": "user", "content": user_text}]
     try:
-        res = client.chat.completions.create(model=config.CHAT_MODEL, messages=msgs, max_tokens=200)
+        res = client.chat.completions.create(model=config.CHAT_MODEL, messages=msgs, max_tokens=200)  # type: ignore
         reply = res.choices[0].message.content.strip() if res.choices[0].message.content else ""
         
         history.append({"role": "user", "content": user_text})
@@ -193,6 +225,18 @@ def chat(user_text, history=None):
         return None, history
 
 def text_to_speech(text):
+    if config.USE_FREE_AI:
+        try:
+            from gtts import gTTS
+            tts = gTTS(text, lang='en')
+            buf = io.BytesIO()
+            tts.write_to_fp(buf)
+            buf.seek(0)
+            return buf.read()
+        except Exception as e:
+            print("free tts failed:", e)
+            return None
+
     client = _get_client()
     if not client: return None
     try:
