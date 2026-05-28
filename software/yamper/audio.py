@@ -37,7 +37,7 @@ def record_while_pressed(is_pressed_fn, max_seconds=None):
 
     print("started recording...")
     try:
-        stream = sd.InputStream(samplerate=rate, channels=channels, dtype=config.MIC_DTYPE, blocksize=chunk_frames)
+        stream = sd.InputStream(samplerate=rate, channels=channels, dtype=config.MIC_DTYPE, blocksize=chunk_frames, device=config.MIC_DEVICE_INDEX)
         stream.start()
 
         while total_frames < max_frames:
@@ -75,7 +75,7 @@ def record_seconds(duration=3.0):
     rate = config.MIC_SAMPLE_RATE
     print(f"recording for {duration}s...")
     try:
-        data = sd.rec(int(rate * duration), samplerate=rate, channels=config.MIC_CHANNELS, dtype=config.MIC_DTYPE)
+        data = sd.rec(int(rate * duration), samplerate=rate, channels=config.MIC_CHANNELS, dtype=config.MIC_DTYPE, device=config.MIC_DEVICE_INDEX)
         sd.wait()
         
         buf = io.BytesIO()
@@ -111,7 +111,7 @@ def play_wav_bytes(wav_bytes):
         if channels > 1:
             data = data.reshape(-1, channels)
 
-        sd.play(data, samplerate=rate)
+        sd.play(data, samplerate=rate, device=config.SPEAKER_DEVICE_INDEX)
         sd.wait()
     except Exception as e:
         print("wav play failed:", e)
@@ -138,7 +138,7 @@ def play_mp3_bytes(mp3_bytes):
         seg = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
         seg = seg.set_channels(1).set_frame_rate(config.TTS_SAMPLE_RATE)
         raw = np.array(seg.get_array_of_samples(), dtype=np.int16)
-        sd.play(raw, samplerate=config.TTS_SAMPLE_RATE)
+        sd.play(raw, samplerate=config.TTS_SAMPLE_RATE, device=config.SPEAKER_DEVICE_INDEX)
         sd.wait()
         return
     except ImportError:
@@ -171,7 +171,7 @@ def play_tone(frequency=440.0, duration=2.0, volume=0.5):
     rate = config.TTS_SAMPLE_RATE
     t = np.linspace(0, duration, int(rate * duration), endpoint=False)
     tone = (volume * 32767 * np.sin(2 * np.pi * frequency * t)).astype(np.int16)
-    sd.play(tone, samplerate=rate)
+    sd.play(tone, samplerate=rate, device=config.SPEAKER_DEVICE_INDEX)
     sd.wait()
 
 def _get_client():
