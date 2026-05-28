@@ -1,0 +1,19 @@
+[Unit]
+Description=Yamper AI Voice Robot
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/yamper/software
+ExecStart=/usr/bin/python3 -m yamper.main
+Restart=always
+RestartSec=10
+
+# StandardOutput=syslog
+# StandardError=syslog
+# SyslogIdentifier=yamper
+
+[Install]
+WantedBy=multi-user.target
