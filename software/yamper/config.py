@@ -5,8 +5,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+HACKCLUB_API_KEY = os.getenv("HACKCLUB_API_KEY", "")
+USE_FREE_AI = os.getenv("USE_FREE_AI", "False").lower() == "true"
+
 WHISPER_MODEL = "whisper-1"
-CHAT_MODEL = "gpt-4o-mini"
+CHAT_MODEL = "qwen/qwen3-32b" if USE_FREE_AI else "gpt-4o-mini"
 TTS_MODEL = "tts-1"
 TTS_VOICE = "nova"
 
@@ -40,3 +43,10 @@ SILENCE_DURATION = 1.5
 WIFI_CHECK_HOST = "dns.google"
 WIFI_CHECK_TIMEOUT = 3
 WIFI_RETRY_INTERVAL = 10
+
+WIFI_SETUP_AP_SSID = "Yamper Setup"
+WIFI_SETUP_AP_PASSWORD = ""
+WIFI_SETUP_IP = "192.168.4.1"  # nosec
+WIFI_SETUP_PORT = 80
+WIFI_SETUP_FORCE_HOLD_SECONDS = 5.0
+WIFI_CONNECT_TIMEOUT = 30
