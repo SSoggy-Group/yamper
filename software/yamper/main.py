@@ -80,6 +80,39 @@ def process_audio_interaction(eyes, button, history):
     return history
 
 
+def check_force_setup(button):
+    if not button.is_pressed():
+        return False
+    print(f"button is held, waiting {config.WIFI_SETUP_FORCE_HOLD_SECONDS}s to check for force setup...")
+    start_hold = time.time()
+    while button.is_pressed():
+        if time.time() - start_hold >= config.WIFI_SETUP_FORCE_HOLD_SECONDS:
+            print("force setup triggered!")
+            return True
+        time.sleep(0.1)
+    return False
+
+def handle_wifi_setup(eyes, force_setup, is_running_func):
+    if is_running_func():
+        print("checking internet...")
+    internet_working = wifi.internet_ok()
+
+    while is_running_func() and (force_setup or not internet_working):
+        if force_setup:
+            print("force setup requested.")
+        else:
+            print("no internet, entering setup mode...")
+            
+        success = wifi_setup.run_setup_mode(eyes)
+        if success:
+            force_setup = False
+            print("setup complete, checking internet again...")
+            internet_working = wifi.internet_ok()
+        else:
+            print("setup mode failed or aborted, retrying in a moment...")
+            time.sleep(2)
+
+
 def run_robot():
     print("starting yamper...")
 
@@ -103,34 +136,8 @@ def run_robot():
         signal.signal(signal.SIGTERM, on_exit)
         signal.signal(signal.SIGINT, on_exit)
 
-    force_setup = False
-    if button.is_pressed():
-        print(f"button is held, waiting {config.WIFI_SETUP_FORCE_HOLD_SECONDS}s to check for force setup...")
-        start_hold = time.time()
-        while button.is_pressed():
-            if time.time() - start_hold >= config.WIFI_SETUP_FORCE_HOLD_SECONDS:
-                force_setup = True
-                print("force setup triggered!")
-                break
-            time.sleep(0.1)
-
-    print("checking internet...")
-    internet_working = wifi.internet_ok()
-
-    while running and (force_setup or not internet_working):
-        if force_setup:
-            print("force setup requested.")
-        else:
-            print("no internet, entering setup mode...")
-            
-        success = wifi_setup.run_setup_mode(eyes)
-        if success:
-            force_setup = False
-            print("setup complete, checking internet again...")
-            internet_working = wifi.internet_ok()
-        else:
-            print("setup mode failed or aborted, retrying in a moment...")
-            time.sleep(2)
+    force_setup = check_force_setup(button)
+    handle_wifi_setup(eyes, force_setup, lambda: running)
 
     if not running:
         cleanup(eyes, button)
