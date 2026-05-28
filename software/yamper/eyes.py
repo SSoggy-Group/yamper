@@ -16,16 +16,90 @@ except ImportError:
 class FakeDisplay:
     width = config.OLED_WIDTH
     height = config.OLED_HEIGHT
-    def display(self, img): pass
-    def hide(self): pass
-    def show(self): pass
+    def display(self, img): pass  # empty
+    def hide(self): pass  # empty
+    def show(self): pass  # empty
+
+_tk_root = None
+_tk_label_left = None
+_tk_label_right = None
+_tk_img_queue = None
+fake_button_held = False
+
+class TkinterDisplay:
+    def __init__(self, side):
+        self.side = side
+        global _tk_root, _tk_label_left, _tk_label_right, _tk_img_queue
+        if _tk_root is None:
+            import tkinter as tk
+            import queue
+            _tk_root = tk.Tk()
+            _tk_root.title("Yamper Eyes")
+            _tk_root.configure(bg="black")
+            
+            frame = tk.Frame(_tk_root, bg="black")
+            frame.pack(padx=20, pady=20)
+            
+            _tk_label_left = tk.Label(frame, bg="black")
+            _tk_label_left.pack(side="left", padx=10)
+            
+            _tk_label_right = tk.Label(frame, bg="black")
+            _tk_label_right.pack(side="left", padx=10)
+            
+            # macOS needs the window to be brought to the front
+            _tk_root.lift()
+            _tk_root.attributes('-topmost', True)
+            _tk_root.after_idle(_tk_root.attributes, '-topmost', False)
+            
+            _tk_img_queue = queue.Queue(maxsize=10)
+            
+            def keydown(e):
+                global fake_button_held
+                if e.keysym == 'space': fake_button_held = True
+            def keyup(e):
+                global fake_button_held
+                if e.keysym == 'space': fake_button_held = False
+                
+            _tk_root.bind('<KeyPress>', keydown)
+            _tk_root.bind('<KeyRelease>', keyup)
+            
+            def pump_gui():
+                while not _tk_img_queue.empty():
+                    side, img = _tk_img_queue.get()
+                    from PIL import ImageTk
+                    photo = ImageTk.PhotoImage(img.resize((config.OLED_WIDTH * 2, config.OLED_HEIGHT * 2)).convert("RGB"))
+                    if side == "left":
+                        setattr(_tk_root, '_photo_left', photo)
+                        _tk_label_left.config(image=photo)
+                    else:
+                        setattr(_tk_root, '_photo_right', photo)
+                        _tk_label_right.config(image=photo)
+                _tk_root.update()
+            
+            setattr(_tk_root, 'pump_gui', pump_gui)
+            
+    def display(self, img):
+        if _tk_img_queue is not None:
+            if _tk_img_queue.full():
+                try: _tk_img_queue.get_nowait()
+                except Exception: pass
+            _tk_img_queue.put((self.side, img.copy()))
+
+    def hide(self): pass  # empty
+    def show(self): pass  # empty
 
 def make_device(address):
+    import sys
+    if sys.platform == "darwin":
+        print("using tkinter for mac screens")
+        side = "left" if address == config.OLED_LEFT_ADDR else "right"
+        return TkinterDisplay(side)
+
     if not has_luma:
         return FakeDisplay()
     try:
         return ssd1306(i2c(port=config.I2C_PORT, address=address), width=config.OLED_WIDTH, height=config.OLED_HEIGHT)
-    except:
+    except Exception:
         print("failed to init display at", address)
         return FakeDisplay()
 
@@ -103,6 +177,18 @@ def frame_boot(t):
     draw_eye(ImageDraw.Draw(img), CX, CY, 24, 8, min(t / 1.5, 1.0))
     return img
 
+def frame_wifi_setup(t):
+    img = Image.new("1", (W, H), 0)
+    draw = ImageDraw.Draw(img)
+    draw.text((10, 10), "SETUP MODE", fill=1)
+    draw.text((10, 30), f"SSID: {config.WIFI_SETUP_AP_SSID}", fill=1)
+    draw.text((10, 45), f"IP: {config.WIFI_SETUP_IP}", fill=1)
+    
+    # blink dot indicator
+    if (t % 1.0) < 0.5:
+        draw.ellipse([W-15, 10, W-5, 20], fill=1)
+    return img
+
 frames_map = {
     "idle": frame_idle,
     "listening": frame_listening,
@@ -112,6 +198,7 @@ frames_map = {
     "wifi_error": frame_wifi_error,
     "sleep": frame_sleep,
     "boot": frame_boot,
+    "wifi_setup": frame_wifi_setup,
 }
 
 class Eyes:
@@ -138,7 +225,7 @@ class Eyes:
             self.left.display(blank)
             if self.right is not self.left:
                 self.right.display(blank)
-        except: pass
+        except Exception: pass
 
     def set_state(self, state):
         with self.lock:
@@ -147,19 +234,23 @@ class Eyes:
                 self.state_start = time.monotonic()
 
     def loop(self):
+        global fake_button_held
         frame_time = 1.0 / 15
+        import sys
+        
         while self.running:
             start = time.monotonic()
+            
             with self.lock:
                 state, t = self.state, start - self.state_start
 
             img = frames_map.get(state, frame_idle)(t)
             try: self.left.display(img)
-            except: pass
+            except Exception: pass
             
             if self.right is not self.left:
-                try: self.right.display(img.transpose(Image.FLIP_LEFT_RIGHT))
-                except: pass
+                try: self.right.display(img.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
+                except Exception: pass
 
             sleep_time = frame_time - (time.monotonic() - start)
             if sleep_time > 0: time.sleep(sleep_time)
