@@ -57,6 +57,8 @@ i2cdetect -y 1
 
 You should see `3c` (and possibly `3d`) in the grid. These are your OLED displays.
 
+> **Important (OLED Address Conflict):** Yamper uses two OLED screens on the same I2C bus. To prevent conflicts, they MUST have different addresses (`0x3C` and `0x3D`). Most screens default to `0x3C`. You will likely need to move the resistor on the back of one screen from `0x78` to `0x7A` (which maps to `0x3D`).
+
 ## 4. Enable I2S audio (for mic and speaker)
 
 Edit the boot configuration:
@@ -95,6 +97,8 @@ aplay -l
 
 You should see at least one recording device and one playback device.
 
+> **Optional:** If you have multiple audio devices, you can set `MIC_DEVICE_INDEX` and `SPEAKER_DEVICE_INDEX` in your `.env` file to force a specific device. You can run `python3 -c "import sounddevice as sd; print(sd.query_devices())"` inside the venv to find your device numbers.
+
 ## 5. Install system dependencies
 
 ```bash
@@ -113,11 +117,11 @@ sudo apt install -y \
 
 ```bash
 cd ~
-git clone https://github.com/YOUR_USERNAME/yamper.git
+git clone https://github.com/SSoggy-Group/yamper.git
 cd yamper/software
 ```
 
-> Replace `YOUR_USERNAME` with your actual GitHub username.
+> Replace `SSoggy-Group` with your actual GitHub username if you forked the repository.
 
 ## 7. Create a Python virtual environment
 
@@ -205,7 +209,9 @@ Once all tests pass:
 python3 -m yamper.main
 ```
 
-Press the button, speak, and Yamper will respond!
+If Yamper cannot connect to the internet, its eyes will show a WiFi setup screen and it will create a hotspot named **Yamper Setup**. Connect to this network on your phone or computer and open `http://192.168.4.1:8080` in your browser to enter your home WiFi credentials.
+
+Once connected to the internet, press the button, speak, and Yamper will respond!
 
 Press `Ctrl+C` to stop.
 

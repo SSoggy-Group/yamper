@@ -138,20 +138,7 @@ def run_robot():
     if not audio.has_sd and sys.platform != "darwin":
         print("WARNING: sounddevice not found! Audio will not work.")
 
-    if config.USE_FREE_AI:
-        if not config.HACKCLUB_API_KEY or config.HACKCLUB_API_KEY == "sk-your-key-here":
-            print("ERROR: HACKCLUB_API_KEY is not set in config/environment.")
-            eyes.set_state("error")
-            time.sleep(5)
-            eyes.stop()
-            sys.exit(1)
-    else:
-        if not config.OPENAI_API_KEY or config.OPENAI_API_KEY == "sk-your-key-here":
-            print("ERROR: OPENAI_API_KEY is not set in config/environment.")
-            eyes.set_state("error")
-            time.sleep(5)
-            eyes.stop()
-            sys.exit(1)
+
 
     button = Button()
     history = []
@@ -174,6 +161,21 @@ def run_robot():
     if not running:
         cleanup(eyes, button)
         sys.exit(0)
+
+    if config.USE_FREE_AI:
+        if not config.HACKCLUB_API_KEY or config.HACKCLUB_API_KEY == "sk-your-key-here":
+            print("ERROR: HACKCLUB_API_KEY is not set in config/environment.")
+            eyes.set_state("error")
+            time.sleep(5)
+            eyes.stop()
+            sys.exit(1)
+    else:
+        if not config.OPENAI_API_KEY or config.OPENAI_API_KEY == "sk-your-key-here":
+            print("ERROR: OPENAI_API_KEY is not set in config/environment.")
+            eyes.set_state("error")
+            time.sleep(5)
+            eyes.stop()
+            sys.exit(1)
 
     print("wifi ok! yamper is ready.")
     eyes.set_state("idle")

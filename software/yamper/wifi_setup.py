@@ -12,6 +12,10 @@ def run_setup_mode(eyes):
     error_msg = None
     
     while True:
+        wifi.set_setup_status("scanning...")
+        print("scanning for networks...")
+        networks = wifi.scan_networks()
+
         # 2. Start Hotspot
         wifi.set_setup_status("hotspot starting")
         if not wifi.start_hotspot():
@@ -27,7 +31,7 @@ def run_setup_mode(eyes):
         password = None
         try:
             # Blocks until credentials are submitted
-            ssid, password = wifi_portal.run_portal(config.WIFI_SETUP_PORT, error_msg=error_msg)
+            ssid, password = wifi_portal.run_portal(config.WIFI_SETUP_PORT, error_msg=error_msg, networks=networks)
         except Exception:
             # Password safety: never print raw exceptions that could contain passwords
             print("Portal encountered an error.")

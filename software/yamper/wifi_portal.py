@@ -27,10 +27,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <h1>Yamper Setup</h1>
         <p>Select your WiFi network to connect Yamper to the internet.</p>
         <form id="setupForm" method="POST" action="/connect">
-            <select name="ssid" required>
-                <option value="" disabled selected>Loading networks...</option>
+            <select name="ssid">
+                <option value="" disabled selected>Select network...</option>
                 {options}
             </select>
+            <input type="text" name="manual_ssid" placeholder="Or type hidden SSID" />
             <input type="password" name="password" placeholder="WiFi Password (optional)" />
             <button type="submit">Connect</button>
         </form>
@@ -45,6 +46,7 @@ setup_complete = False
 chosen_ssid = None
 chosen_password = None
 current_error_msg = None
+cached_networks = []
 
 class PortalHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -54,7 +56,7 @@ class PortalHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         global current_error_msg
         if self.path == '/':
-            networks = wifi.scan_networks()
+            networks = cached_networks
             options = "".join([f'<option value="{html.escape(n)}">{html.escape(n)}</option>' for n in networks])
             if not networks:
                 options = '<option value="" disabled>No networks found</option>'
@@ -85,17 +87,18 @@ class PortalHandler(http.server.BaseHTTPRequestHandler):
             fields = urllib.parse.parse_qs(post_data)
             
             ssid = fields.get('ssid', [''])[0]
+            manual_ssid = fields.get('manual_ssid', [''])[0]
             password = fields.get('password', [''])[0]
             
-            print(f"Portal: user submitted SSID '{ssid}'")
+            chosen_ssid = manual_ssid if manual_ssid else ssid
+            print(f"Portal: user submitted SSID '{chosen_ssid}'")
             
             # Save credentials and exit the handler loop
-            chosen_ssid = ssid
             chosen_password = password
             setup_complete = True
             
-            msg = f"Connecting to '{html.escape(ssid)}'... The setup hotspot will now close. Please wait to see if Yamper successfully connects."
-            options = f'<option value="{html.escape(ssid)}" selected>{html.escape(ssid)}</option>'
+            msg = f"Connecting to '{html.escape(chosen_ssid)}'... The setup hotspot will now close. Please wait to see if Yamper successfully connects."
+            options = f'<option value="{html.escape(chosen_ssid)}" selected>{html.escape(chosen_ssid)}</option>'
             html_content = HTML_TEMPLATE.format(options=options, status_msg=msg, status_class="success-msg")
             
             self.send_response(200)
@@ -106,12 +109,13 @@ class PortalHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-def run_portal(port, error_msg=None, server_class=http.server.HTTPServer, handler_class=PortalHandler):
-    global setup_complete, chosen_ssid, chosen_password, current_error_msg
+def run_portal(port, error_msg=None, networks=None, server_class=http.server.HTTPServer, handler_class=PortalHandler):
+    global setup_complete, chosen_ssid, chosen_password, current_error_msg, cached_networks
     setup_complete = False
     chosen_ssid = None
     chosen_password = None
     current_error_msg = error_msg
+    cached_networks = networks or []
     
     server_address = ('', port)
     

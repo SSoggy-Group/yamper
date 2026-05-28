@@ -186,7 +186,7 @@ def frame_wifi_setup(t):
     
     draw.text((5, 5), "SETUP MODE", fill=1)
     draw.text((5, 18), f"SSID: {config.WIFI_SETUP_AP_SSID}", fill=1)
-    draw.text((5, 31), f"IP: {wifi.get_setup_ip()}", fill=1)
+    draw.text((5, 31), f"Open: {wifi.get_setup_ip()}:{config.WIFI_SETUP_PORT}", fill=1)
     draw.text((5, 44), f"Status: {wifi.get_setup_status()}", fill=1)
     
     # blink dot indicator
