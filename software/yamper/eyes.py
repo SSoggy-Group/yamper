@@ -180,13 +180,18 @@ def frame_boot(t):
 def frame_wifi_setup(t):
     img = Image.new("1", (W, H), 0)
     draw = ImageDraw.Draw(img)
-    draw.text((10, 10), "SETUP MODE", fill=1)
-    draw.text((10, 30), f"SSID: {config.WIFI_SETUP_AP_SSID}", fill=1)
-    draw.text((10, 45), f"IP: {config.WIFI_SETUP_IP}", fill=1)
+    
+    # Local import to prevent circular dependency
+    from . import wifi
+    
+    draw.text((5, 5), "SETUP MODE", fill=1)
+    draw.text((5, 18), f"SSID: {config.WIFI_SETUP_AP_SSID}", fill=1)
+    draw.text((5, 31), f"IP: {wifi.get_setup_ip()}", fill=1)
+    draw.text((5, 44), f"Status: {wifi.get_setup_status()}", fill=1)
     
     # blink dot indicator
     if (t % 1.0) < 0.5:
-        draw.ellipse([W-15, 10, W-5, 20], fill=1)
+        draw.ellipse([W-15, 5, W-5, 15], fill=1)
     return img
 
 frames_map = {

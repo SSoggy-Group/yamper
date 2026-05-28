@@ -2,8 +2,48 @@ import subprocess
 import sys
 from . import config
 
-def is_mac():
-    return sys.platform == "darwin"
+_setup_status = "hotspot starting"
+
+def is_mock():
+    return sys.platform == "darwin" or getattr(config, "WIFI_MOCK_MODE", False)
+
+def get_setup_status():
+    return _setup_status
+
+def set_setup_status(status):
+    global _setup_status
+    _setup_status = status
+    print(f"Status: {status}")
+
+def get_ip_address(ifname="wlan0"):
+    if is_mock():
+        return "127.0.0.1"
+    try:
+        import socket
+        import fcntl
+        import struct
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x8915,  # SIOCGIFADDR
+            struct.pack('256s', ifname[:15].encode('utf-8'))
+        )[20:24])
+    except Exception:
+        try:
+            res = subprocess.run(["ip", "-o", "-4", "addr", "show", ifname], capture_output=True, text=True, check=True)
+            for line in res.stdout.split("\n"):
+                parts = line.split()
+                if len(parts) >= 4 and parts[2] == "inet":
+                    return parts[3].split("/")[0]
+        except Exception:
+            pass
+        return None
+
+def get_setup_ip():
+    ip = get_ip_address("wlan0")
+    if ip:
+        return ip
+    return config.WIFI_SETUP_IP
 
 def internet_ok():
     try:
@@ -16,7 +56,7 @@ def internet_ok():
         return False
 
 def scan_networks():
-    if is_mac():
+    if is_mock():
         return ["Fake_WiFi_1", "Fake_WiFi_2", "My_Home_Network"]
     try:
         res = subprocess.run(
@@ -33,7 +73,7 @@ def scan_networks():
 def start_hotspot():
     ssid = config.WIFI_SETUP_AP_SSID
     password = config.WIFI_SETUP_AP_PASSWORD
-    if is_mac():
+    if is_mock():
         print(f"[MOCK] Starting hotspot '{ssid}'")
         return True
     
@@ -55,12 +95,12 @@ def start_hotspot():
     try:
         subprocess.run(cmd, capture_output=True, check=True)
         return True
-    except Exception as e:
-        print("start_hotspot failed:", e)
+    except Exception:
+        print("start_hotspot failed")
         return False
 
 def stop_hotspot():
-    if is_mac():
+    if is_mock():
         print("[MOCK] Stopping hotspot")
         return True
     
@@ -68,23 +108,24 @@ def stop_hotspot():
         subprocess.run(["nmcli", "connection", "down", "yamper-hotspot"], capture_output=True)
         subprocess.run(["nmcli", "connection", "delete", "yamper-hotspot"], capture_output=True)
         return True
-    except Exception as e:
-        print("stop_hotspot failed:", e)
+    except Exception:
+        print("stop_hotspot failed")
         return False
 
 def connect_to_wifi(ssid, password):
-    if is_mac():
+    if is_mock():
         print(f"[MOCK] Connecting to '{ssid}'")
         import time
         time.sleep(2)
-        return ssid != "Fake_WiFi_2"  # fake failure case
+        return ssid != "Fake_WiFi_2"  # Fake failure case
     
     try:
         cmd = ["nmcli", "device", "wifi", "connect", ssid]
         if password:
             cmd.extend(["password", password])
+        # Do not print exception or raw command output to avoid exposing WiFi password in logs
         subprocess.run(cmd, capture_output=True, check=True, timeout=config.WIFI_CONNECT_TIMEOUT)
         return True
-    except Exception as e:
-        print(f"connect_to_wifi failed for '{ssid}':", e)
+    except Exception:
+        print(f"connect_to_wifi failed for '{ssid}'")
         return False
