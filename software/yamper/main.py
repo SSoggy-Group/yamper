@@ -5,18 +5,12 @@ import time
 
 from . import audio
 from . import config
+from . import wifi
+from . import wifi_setup
 from .button import Button
 from .eyes import Eyes
 
-def check_wifi():
-    try:
-        subprocess.run(
-            ["ping", "-c", "1", "-W", str(config.WIFI_CHECK_TIMEOUT), config.WIFI_CHECK_HOST],
-            capture_output=True, check=True
-        )
-        return True
-    except:
-        return False
+
 
 def cleanup(eyes, button):
     print("cleaning up hardware...")
@@ -26,7 +20,67 @@ def cleanup(eyes, button):
     button.cleanup()
     print("bye!")
 
-def main():
+def process_audio_interaction(eyes, button, history):
+    print("button pressed, listening...")
+    button.set_led(False)
+    eyes.set_state("listening")
+    time.sleep(0.15)
+    
+    wav_bytes = audio.record_while_pressed(button.is_pressed)
+
+    if not wav_bytes:
+        print("audio capture failed :(")
+        eyes.set_state("error")
+        time.sleep(2.0)
+        eyes.set_state("idle")
+        button.set_led(True)
+        return history
+
+    print("thinking...")
+    eyes.set_state("thinking")
+
+    text = audio.transcribe(wav_bytes)
+    if not text:
+        print("couldn't understand that")
+        eyes.set_state("error")
+        time.sleep(2.0)
+        eyes.set_state("idle")
+        button.set_led(True)
+        return history
+        
+    print("user said:", text)
+    reply, history = audio.chat(text, history)
+    
+    if not reply:
+        print("llm failed")
+        eyes.set_state("error")
+        time.sleep(2.0)
+        eyes.set_state("idle")
+        button.set_led(True)
+        return history
+        
+    print("yamper says:", reply)
+    mp3_data = audio.text_to_speech(reply)
+    
+    if not mp3_data:
+        print("tts failed")
+        eyes.set_state("error")
+        time.sleep(2.0)
+        eyes.set_state("idle")
+        button.set_led(True)
+        return history
+
+    print("speaking...")
+    eyes.set_state("speaking")
+    audio.play_mp3_bytes(mp3_data)
+
+    eyes.set_state("idle")
+    button.set_led(True)
+    print("done, back to idle")
+    return history
+
+
+def run_robot():
     print("starting yamper...")
 
     eyes = Eyes()
@@ -44,14 +98,39 @@ def main():
         print(f"\ngot signal {signum}, stopping...")
         running = False
 
-    signal.signal(signal.SIGTERM, on_exit)
-    signal.signal(signal.SIGINT, on_exit)
+    import threading
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, on_exit)
+        signal.signal(signal.SIGINT, on_exit)
 
-    print("checking wifi...")
-    while running and not check_wifi():
-        print(f"no wifi... trying again in {config.WIFI_RETRY_INTERVAL}s")
-        eyes.set_state("wifi_error")
-        time.sleep(config.WIFI_RETRY_INTERVAL)
+    force_setup = False
+    if button.is_pressed():
+        print(f"button is held, waiting {config.WIFI_SETUP_FORCE_HOLD_SECONDS}s to check for force setup...")
+        start_hold = time.time()
+        while button.is_pressed():
+            if time.time() - start_hold >= config.WIFI_SETUP_FORCE_HOLD_SECONDS:
+                force_setup = True
+                print("force setup triggered!")
+                break
+            time.sleep(0.1)
+
+    print("checking internet...")
+    internet_working = wifi.internet_ok()
+
+    while running and (force_setup or not internet_working):
+        if force_setup:
+            print("force setup requested.")
+        else:
+            print("no internet, entering setup mode...")
+            
+        success = wifi_setup.run_setup_mode(eyes)
+        if success:
+            force_setup = False
+            print("setup complete, checking internet again...")
+            internet_working = wifi.internet_ok()
+        else:
+            print("setup mode failed or aborted, retrying in a moment...")
+            time.sleep(2)
 
     if not running:
         cleanup(eyes, button)
@@ -65,64 +144,30 @@ def main():
         if not button.wait_for_press(timeout=1.0):
             continue
 
-        print("button pressed, listening...")
-        button.set_led(False)
-        eyes.set_state("listening")
-        time.sleep(0.15)
-        
-        wav_bytes = audio.record_while_pressed(button.is_pressed)
-
-        if not wav_bytes:
-            print("audio capture failed :(")
-            eyes.set_state("error")
-            time.sleep(2.0)
-            eyes.set_state("idle")
-            button.set_led(True)
-            continue
-
-        print("thinking...")
-        eyes.set_state("thinking")
-
-        text = audio.transcribe(wav_bytes)
-        if not text:
-            print("couldn't understand that")
-            eyes.set_state("error")
-            time.sleep(2.0)
-            eyes.set_state("idle")
-            button.set_led(True)
-            continue
-            
-        print("user said:", text)
-        reply, history = audio.chat(text, history)
-        
-        if not reply:
-            print("llm failed")
-            eyes.set_state("error")
-            time.sleep(2.0)
-            eyes.set_state("idle")
-            button.set_led(True)
-            continue
-            
-        print("yamper says:", reply)
-        mp3_data = audio.text_to_speech(reply)
-        
-        if not mp3_data:
-            print("tts failed")
-            eyes.set_state("error")
-            time.sleep(2.0)
-            eyes.set_state("idle")
-            button.set_led(True)
-            continue
-
-        print("speaking...")
-        eyes.set_state("speaking")
-        audio.play_mp3_bytes(mp3_data)
-
-        eyes.set_state("idle")
-        button.set_led(True)
-        print("done, back to idle")
+        history = process_audio_interaction(eyes, button, history)
 
     cleanup(eyes, button)
+
+def main():
+    if sys.platform == "darwin":
+        import threading
+        print("initializing mac screens...")
+        from . import eyes
+        eyes.make_device(config.OLED_LEFT_ADDR)
+        
+        t = threading.Thread(target=run_robot, daemon=True)
+        t.start()
+        
+        try:
+            while t.is_alive():
+                if hasattr(eyes, '_tk_root') and eyes._tk_root is not None:
+                    try: eyes._tk_root.pump_gui()
+                    except Exception: break
+                time.sleep(0.05)
+        except KeyboardInterrupt:
+            print("\nstopping...")
+    else:
+        run_robot()
 
 if __name__ == "__main__":
     main()
