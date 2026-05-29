@@ -69,6 +69,7 @@ except Exception as ex:
 try:
     from . import audio
     import numpy as np
+    import sounddevice as sd
     print("Playing beep...")
     if sys.platform != "darwin" and not audio.has_sd:
         print("[SKIP] sounddevice not available, skipping beep")
@@ -83,6 +84,8 @@ except Exception as ex:
 
 # 8. Mic record
 try:
+    from . import audio
+    import sounddevice as sd
     print("Recording for 2 seconds...")
     if sys.platform != "darwin" and not audio.has_sd:
         print("[SKIP] sounddevice not available, skipping record")
