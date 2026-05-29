@@ -1,0 +1,218 @@
+[
+  {
+    "file": "yamper_v11_front_shell_fused.stl",
+    "vertices": 196746,
+    "faces": 393552,
+    "watertight": true,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -52.07500076293945,
+        -41.625,
+        -0.07500000298023224
+      ],
+      [
+        51.875,
+        40.875,
+        52.17499923706055
+      ]
+    ],
+    "size_mm": [
+      103.95,
+      82.5,
+      52.25
+    ]
+  },
+  {
+    "file": "yamper_v11_back_cover_with_pisugar_power_slot.stl",
+    "vertices": 64404,
+    "faces": 128848,
+    "watertight": true,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -51.67499923706055,
+        -40.67499923706055,
+        -0.07500000298023224
+      ],
+      [
+        51.724998474121094,
+        40.724998474121094,
+        8.725000381469727
+      ]
+    ],
+    "size_mm": [
+      103.4,
+      81.4,
+      8.8
+    ]
+  },
+  {
+    "file": "yamper_v11_oled_retainer_print_2x.stl",
+    "vertices": 24,
+    "faces": 48,
+    "watertight": false,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -16.5,
+        -4.0,
+        0.0
+      ],
+      [
+        16.5,
+        4.0,
+        2.200000047683716
+      ]
+    ],
+    "size_mm": [
+      33.0,
+      8.0,
+      2.2
+    ]
+  },
+  {
+    "file": "yamper_v11_3525_speaker_retainer.stl",
+    "vertices": 24,
+    "faces": 48,
+    "watertight": false,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -15.5,
+        -20.5,
+        0.0
+      ],
+      [
+        15.5,
+        20.5,
+        2.200000047683716
+      ]
+    ],
+    "size_mm": [
+      31.0,
+      41.0,
+      2.2
+    ]
+  },
+  {
+    "file": "yamper_v11_round_inmp441_mic_retainer.stl",
+    "vertices": 256,
+    "faces": 512,
+    "watertight": true,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -8.100000381469727,
+        -8.100000381469727,
+        -1.100000023841858
+      ],
+      [
+        8.100000381469727,
+        8.100000381469727,
+        1.100000023841858
+      ]
+    ],
+    "size_mm": [
+      16.2,
+      16.2,
+      2.2
+    ]
+  },
+  {
+    "file": "yamper_v11_max98357a_clip.stl",
+    "vertices": 24,
+    "faces": 36,
+    "watertight": true,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -12.5,
+        -2.0,
+        0.0
+      ],
+      [
+        12.5,
+        6.0,
+        2.200000047683716
+      ]
+    ],
+    "size_mm": [
+      25.0,
+      8.0,
+      2.2
+    ]
+  },
+  {
+    "file": "yamper_v11_pisugar_power_button_plunger_test.stl",
+    "vertices": 16,
+    "faces": 24,
+    "watertight": true,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -11.0,
+        -5.0,
+        0.0
+      ],
+      [
+        11.0,
+        5.0,
+        6.900000095367432
+      ]
+    ],
+    "size_mm": [
+      22.0,
+      10.0,
+      6.9
+    ]
+  },
+  {
+    "file": "yamper_v11_pisugar_slot_blank_cap_optional.stl",
+    "vertices": 8,
+    "faces": 12,
+    "watertight": true,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -14.0,
+        -6.0,
+        0.0
+      ],
+      [
+        14.0,
+        6.0,
+        2.0
+      ]
+    ],
+    "size_mm": [
+      28.0,
+      12.0,
+      2.0
+    ]
+  },
+  {
+    "file": "yamper_v11_button_washer_optional.stl",
+    "vertices": 320,
+    "faces": 640,
+    "watertight": true,
+    "winding_consistent": true,
+    "bounds_mm": [
+      [
+        -11.399999618530273,
+        -11.399999618530273,
+        -1.0
+      ],
+      [
+        11.399999618530273,
+        11.399999618530273,
+        1.0
+      ]
+    ],
+    "size_mm": [
+      22.8,
+      22.8,
+      2.0
+    ]
+  }
+]
